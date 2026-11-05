@@ -1,4 +1,3 @@
-
 stages:
   train:
     cmd: python src/train.py
@@ -14,4 +13,17 @@ stages:
       - models/model.pkl
     metrics:
       - reports/metrics.json:
+          cache: false
+  train_knn:
+    cmd: python src/train_knn.py
+    deps:
+      - src/train_knn.py
+      - data/raw/iris.csv
+    params:
+      - knn.n_neighbors
+      - knn.weights
+    outs:
+      - models/model_knn.pkl
+    metrics:
+      - reports/metrics_knn.json:
           cache: false
