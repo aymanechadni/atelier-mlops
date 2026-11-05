@@ -20,3 +20,7 @@ print("Dataset Iris généré avec succès")
 print("Nombre de lignes :", len(df))
 print("Nombre de colonnes :", len(df.columns))
 print(df.head())
+
+# Afficher la distribution des classes
+print("Distribution des classes :")
+print(df["target"].value_counts().sort_index())
