@@ -20,6 +20,8 @@ stages:
       - src/train_knn.py
       - data/raw/iris.csv
     params:
+      - train.random_state
+      - train.test_size
       - knn.n_neighbors
       - knn.weights
     outs:

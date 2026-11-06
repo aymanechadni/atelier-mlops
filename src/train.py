@@ -1,79 +1,47 @@
-
-import os
-import yaml
+"""Entrainement Random Forest sur Iris avec DVC et MLflow."""
 import json
+from pathlib import Path
+
 import joblib
 import mlflow
 import pandas as pd
-
-from sklearn.model_selection import train_test_split
+import yaml
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    accuracy_score, precision_score,
-    recall_score, f1_score
-)
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.model_selection import train_test_split
 
-# Charger les paramètres
-with open("params.yaml", "r") as file:
-    params = yaml.safe_load(file)["train"]
-
-# Charger le dataset
-df = pd.read_csv("data/raw/iris.csv")
-X = df.drop("target", axis=1)
-y = df["target"]
-
-# Diviser les données
+ROOT = Path(__file__).resolve().parents[1]
+with (ROOT / "params.yaml").open(encoding="utf-8") as handle:
+    train = yaml.safe_load(handle)["train"]
+df = pd.read_csv(ROOT / "data" / "raw" / "iris.csv")
+X, y = df.drop(columns=["target"]), df["target"]
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=params["test_size"],
-    random_state=params["random_state"],
-    stratify=y
+    X, y, test_size=train["test_size"], random_state=train["random_state"], stratify=y
 )
-
-# Configurer MLflow
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 mlflow.set_experiment("TP_Iris_Classification")
-
-# Démarrer une expérimentation
 with mlflow.start_run(run_name="RandomForest_Iris"):
-
     model = RandomForestClassifier(
-        n_estimators=params["n_estimators"],
-        max_depth=params["max_depth"],
-        random_state=params["random_state"]
+        n_estimators=train["n_estimators"], max_depth=train["max_depth"],
+        random_state=train["random_state"]
     )
-
     model.fit(X_train, y_train)
-    predictions = model.predict(X_test)
-
-    # Calculer les métriques
+    pred = model.predict(X_test)
     metrics = {
-        "accuracy": accuracy_score(y_test, predictions),
-        "precision": precision_score(
-            y_test, predictions, average="weighted"
-        ),
-        "recall": recall_score(
-            y_test, predictions, average="weighted"
-        ),
-        "f1_score": f1_score(
-            y_test, predictions, average="weighted"
-        )
+        "accuracy": float(accuracy_score(y_test, pred)),
+        "precision": float(precision_score(y_test, pred, average="weighted", zero_division=0)),
+        "recall": float(recall_score(y_test, pred, average="weighted", zero_division=0)),
+        "f1_score": float(f1_score(y_test, pred, average="weighted", zero_division=0)),
     }
-
-    # Enregistrer paramètres et métriques
-    mlflow.log_params(params)
+    mlflow.log_params({"model_type": "RandomForest", **train})
     mlflow.log_metrics(metrics)
-
-    # Sauvegarder le modèle
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(model, "models/model.pkl")
-    mlflow.log_artifact("models/model.pkl", artifact_path="model")
-
-    # Enregistrer les métriques dans un fichier
-    os.makedirs("reports", exist_ok=True)
-
-    with open("reports/metrics.json", "w") as f:
-        json.dump(metrics, f, indent=4)
-
-    print("Métriques :", metrics)
-    print("Modèle entraîné et enregistré.")
+    (ROOT / "models").mkdir(exist_ok=True)
+    model_file = ROOT / "models" / "model.pkl"
+    joblib.dump(model, model_file)
+    mlflow.log_artifact(str(model_file), artifact_path="model")
+    (ROOT / "reports").mkdir(exist_ok=True)
+    (ROOT / "reports" / "metrics.json").write_text(
+        json.dumps(metrics, indent=4), encoding="utf-8"
+    )
+print("RandomForest - Metriques :", metrics)
+print("Modele RandomForest entraine et enregistre.")

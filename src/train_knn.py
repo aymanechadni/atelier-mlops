@@ -1,84 +1,48 @@
-import os
-import yaml
+"""Entrainement KNN sur Iris : DVC orchestre, MLflow trace les experiences."""
 import json
+from pathlib import Path
+
 import joblib
 import mlflow
 import pandas as pd
-
+import yaml
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import (
-    accuracy_score, precision_score,
-    recall_score, f1_score
-)
 
-# Charger les paramètres
-with open("params.yaml", "r") as file:
-    config = yaml.safe_load(file)
-    train_params = config.get("train", {})
-    knn_params = config.get("knn", {"n_neighbors": 5, "weights": "uniform"})
+ROOT = Path(__file__).resolve().parents[1]
+with (ROOT / "params.yaml").open(encoding="utf-8") as handle:
+    config = yaml.safe_load(handle)
+train = config["train"]
+knn = config["knn"]
 
-# Charger le dataset
-df = pd.read_csv("data/raw/iris.csv")
-X = df.drop("target", axis=1)
-y = df["target"]
-
-# Diviser les données
+df = pd.read_csv(ROOT / "data" / "raw" / "iris.csv")
+X, y = df.drop(columns=["target"]), df["target"]
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=train_params.get("test_size", 0.2),
-    random_state=train_params.get("random_state", 42),
-    stratify=y
+    X, y, test_size=train["test_size"], random_state=train["random_state"], stratify=y
 )
-
-# Configurer MLflow
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 mlflow.set_experiment("TP_Iris_Classification")
-
-# Démarrer une expérimentation pour KNN
 with mlflow.start_run(run_name="KNN_Iris"):
-    model = KNeighborsClassifier(
-        n_neighbors=knn_params.get("n_neighbors", 5),
-        weights=knn_params.get("weights", "uniform")
-    )
-
+    model = KNeighborsClassifier(n_neighbors=knn["n_neighbors"], weights=knn["weights"])
     model.fit(X_train, y_train)
-    predictions = model.predict(X_test)
-
-    # Calculer les métriques
+    pred = model.predict(X_test)
     metrics = {
-        "accuracy": accuracy_score(y_test, predictions),
-        "precision": precision_score(
-            y_test, predictions, average="weighted"
-        ),
-        "recall": recall_score(
-            y_test, predictions, average="weighted"
-        ),
-        "f1_score": f1_score(
-            y_test, predictions, average="weighted"
-        )
+        "accuracy": float(accuracy_score(y_test, pred)),
+        "precision": float(precision_score(y_test, pred, average="weighted", zero_division=0)),
+        "recall": float(recall_score(y_test, pred, average="weighted", zero_division=0)),
+        "f1_score": float(f1_score(y_test, pred, average="weighted", zero_division=0)),
     }
-
-    # Enregistrer paramètres et métriques
-    logged_params = {
-        "model_type": "KNN",
-        "n_neighbors": knn_params.get("n_neighbors", 5),
-        "weights": knn_params.get("weights", "uniform"),
-        "random_state": train_params.get("random_state", 42),
-        "test_size": train_params.get("test_size", 0.2)
-    }
-    mlflow.log_params(logged_params)
+    mlflow.log_params({"model_type": "KNN", **knn,
+                       "test_size": train["test_size"], "random_state": train["random_state"]})
     mlflow.log_metrics(metrics)
-
-    # Sauvegarder le modèle
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(model, "models/model_knn.pkl")
-    mlflow.log_artifact("models/model_knn.pkl", artifact_path="model_knn")
-
-    # Enregistrer les métriques dans un fichier
-    os.makedirs("reports", exist_ok=True)
-    with open("reports/metrics_knn.json", "w") as f:
-        json.dump(metrics, f, indent=4)
-
-    print("KNN Métriques :", metrics)
-    print("Modèle KNN entraîné et enregistré.")
+    (ROOT / "models").mkdir(exist_ok=True)
+    model_file = ROOT / "models" / "model_knn.pkl"
+    joblib.dump(model, model_file)
+    mlflow.log_artifact(str(model_file), artifact_path="model_knn")
+    (ROOT / "reports").mkdir(exist_ok=True)
+    (ROOT / "reports" / "metrics_knn.json").write_text(
+        json.dumps(metrics, indent=4), encoding="utf-8"
+    )
+print("KNN - Metriques :", metrics)
+print("Modele KNN entraine et enregistre.")
